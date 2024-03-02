@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use crate::app::handlers::test_handler::test_api;
 use crate::http::utils::not_found_response;
 
-use super::another_router::{self, AnotherRouter};
+use super::another_router::AnotherRouter;
 use super::test_router::TestRouter;
 
 pub struct Router {
