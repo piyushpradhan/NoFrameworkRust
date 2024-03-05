@@ -32,6 +32,16 @@ pub fn not_found_response() -> String {
     )
 }
 
+pub fn something_went_wrong(message: String) -> String {
+    format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
+        404,
+        http_status_text(404),
+        message.len(),
+        message
+    )
+}
+
 pub fn initial_sse_response() -> String {
     "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n"
         .to_string()

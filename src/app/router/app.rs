@@ -4,28 +4,31 @@ use crate::app::handlers::test_handler::test_api;
 use crate::http::utils::not_found_response;
 
 use super::another_router::AnotherRouter;
+use super::auth_router::AuthRouter;
 use super::test_router::TestRouter;
 
 pub struct Router {
     sender: mpsc::Sender<String>,
     test_router: TestRouter,
     another_router: AnotherRouter,
+    auth_router: AuthRouter,
 }
 
 impl Router {
     pub fn new(sender: mpsc::Sender<String>) -> Self {
-        // Child routers
         let test_router = TestRouter::new(sender.clone());
         let another_router = AnotherRouter::new(sender.clone());
+        let auth_router = AuthRouter::new(sender.clone());
 
         Router {
             sender,
             test_router,
             another_router,
+            auth_router,
         }
     }
 
-    pub fn route(
+    pub async fn route(
         &self,
         method: &str,
         path: &str,
@@ -47,6 +50,11 @@ impl Router {
             "another" => self
                 .another_router
                 .route(method, path, authorization_header, body),
+            "auth" => {
+                self.auth_router
+                    .route(method, path, authorization_header, body)
+                    .await
+            }
             _ => not_found_response(),
         }
     }

@@ -1,3 +1,4 @@
+use dotenv::dotenv;
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
@@ -9,7 +10,9 @@ use crate::app::router::app::Router;
 
 use super::utils::extract_request;
 
-pub fn handle_connection(mut stream: TcpStream) {
+pub async fn handle_connection(mut stream: TcpStream) {
+    dotenv().ok();
+
     let mut buffer = Vec::new();
 
     loop {
@@ -39,7 +42,9 @@ pub fn handle_connection(mut stream: TcpStream) {
     let (sender, receiver) = mpsc::channel::<String>();
 
     let app_router: Router = Router::new(sender.clone());
-    let response = app_router.route(method.as_str(), uri.as_str(), authorization_header, body);
+    let response = app_router
+        .route(method.as_str(), uri.as_str(), authorization_header, body)
+        .await;
 
     // Write the response to stream
     let _write = stream.write(response.as_bytes()).unwrap();
