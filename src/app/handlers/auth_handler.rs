@@ -21,7 +21,11 @@ fn parse_json(json_string: &str) -> Result<Value, Error> {
     parsed_json
 }
 
-pub async fn login(sender: &Sender<String>, body: String) -> String {
+pub async fn login(
+    sender: &Sender<String>,
+    body: String,
+    cookies: Option<Vec<(&str, &str)>>,
+) -> String {
     match setup().await {
         Ok(auth_service) => {
             let username;
@@ -38,12 +42,52 @@ pub async fn login(sender: &Sender<String>, body: String) -> String {
                 }
             }
 
-            let response: Result<User, PgError> = auth_service.login(&username, &password).await;
+            let response: Result<User, PgError> = auth_service
+                .login(username.as_str(), password.as_str(), cookies)
+                .await;
 
             match response {
                 Ok(response) => {
                     let formatted_response = generate_http_response(200, &response);
 
+                    let _ = sender.send(formatted_response.clone());
+                    return formatted_response;
+                }
+                Err(error) => something_went_wrong(error.to_string()),
+            }
+        }
+        _ => {
+            return not_found_response();
+        }
+    };
+
+    return not_found_response();
+}
+
+pub async fn register(sender: &Sender<String>, body: String) -> String {
+    match setup().await {
+        Ok(auth_service) => {
+            let username;
+            let password;
+
+            match parse_json(body.as_str()) {
+                Ok(data) => {
+                    username = data["username"].to_string();
+                    password = data["password"].to_string();
+                }
+                Err(_) => {
+                    username = String::new();
+                    password = String::new();
+                }
+            }
+
+            let response: Result<User, PgError> = auth_service.register(&username, &password).await;
+
+            match response {
+                Ok(response) => {
+                    let formatted_response = generate_http_response(200, &response);
+
+                    println!("{}", formatted_response);
                     let _ = sender.send(formatted_response.clone());
                     return formatted_response;
                 }

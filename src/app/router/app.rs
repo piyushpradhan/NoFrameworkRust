@@ -34,6 +34,7 @@ impl Router {
         path: &str,
         authorization_header: Option<&str>,
         body: String,
+        cookies: Option<Vec<(&str, &str)>>,
     ) -> String {
         let mut segments = path.trim_matches('/').split("/");
         let mut prefix = "/";
@@ -52,7 +53,7 @@ impl Router {
                 .route(method, path, authorization_header, body),
             "auth" => {
                 self.auth_router
-                    .route(method, path, authorization_header, body)
+                    .route(method, path, authorization_header, body, cookies)
                     .await
             }
             _ => not_found_response(),

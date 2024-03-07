@@ -80,6 +80,27 @@ fn extract_auth_header(request: &str) -> Option<&str> {
     None
 }
 
+fn extract_cookies(request: &str) -> Option<Vec<(&str, &str)>> {
+    let mut cookies = vec![];
+
+    for line in request.lines() {
+        if let Some(cookie_line) = line.strip_prefix("Cookie: ") {
+            for cookie in cookie_line.split(';') {
+                let mut parts = cookie.trim().split('=');
+                if let (Some(name), Some(value)) = (parts.next(), parts.next()) {
+                    cookies.push((name, value));
+                }
+            }
+        }
+    }
+
+    if cookies.is_empty() {
+        None
+    } else {
+        Some(cookies)
+    }
+}
+
 fn extract_body(request: &str) -> String {
     let lines: Vec<&str> = request.lines().collect();
 
@@ -96,11 +117,20 @@ fn extract_body(request: &str) -> String {
     }
 }
 
-pub fn extract_request(request: &str) -> (String, String, Option<&str>, String) {
+pub fn extract_request(
+    request: &str,
+) -> (
+    String,
+    String,
+    Option<&str>,
+    String,
+    Option<Vec<(&str, &str)>>,
+) {
     let uri = extract_uri(request);
     let method = extract_method(request);
     let authorization_header = extract_auth_header(request);
     let body = extract_body(request);
+    let cookies = extract_cookies(request);
 
-    (uri, method, authorization_header, body)
+    (uri, method, authorization_header, body, cookies)
 }

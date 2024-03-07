@@ -1,9 +1,11 @@
 use std::{
+    future::Future,
+    pin::Pin,
     sync::{mpsc, Arc, Mutex},
-    thread::{self},
+    thread,
 };
 
-type Job = Box<dyn FnOnce() + Send + 'static>;
+type Job = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 enum Message {
     NewJob(Job),
@@ -17,11 +19,12 @@ struct Worker {
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
+        println!("Spawned a new thread: {}", id);
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
             match message {
                 Message::NewJob(job) => {
-                    job();
+                    let _ = tokio::runtime::Runtime::new().unwrap().block_on(job);
                 }
                 Message::Terminate => {
                     break;
@@ -61,9 +64,10 @@ impl ThreadPool {
     // Send the job to be executed
     pub fn execute<F>(&self, f: F)
     where
-        F: FnOnce() + Send + 'static,
+        F: Future<Output = ()> + Send + 'static,
     {
-        let job = Box::new(f);
+        println!("Executing job");
+        let job = Box::pin(f);
         self.sender.send(Message::NewJob(job)).unwrap();
     }
 }

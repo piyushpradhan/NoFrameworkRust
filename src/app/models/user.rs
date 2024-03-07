@@ -4,35 +4,15 @@ use serde::{Deserialize, Serialize};
 pub struct User {
     pub id: i32,
     pub username: String,
-    pub password: String,
+    pub access_token: String,
 }
 
 impl User {
-    pub fn new(id: i32, username: String, password: String) -> Self {
+    pub fn new(id: i32, username: String, access_token: String) -> Self {
         User {
             id,
             username,
-            password,
+            access_token,
         }
-    }
-
-    pub fn id(&self) -> i32 {
-        self.id
-    }
-
-    pub fn username(&self) -> &str {
-        &self.username
-    }
-
-    pub fn password(&self) -> &str {
-        &self.password
-    }
-
-    pub fn set_username(&mut self, username: String) {
-        self.username = username;
-    }
-
-    pub fn set_password(&mut self, password: String) {
-        self.password = password;
     }
 }

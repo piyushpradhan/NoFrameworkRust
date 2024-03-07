@@ -36,14 +36,20 @@ pub async fn handle_connection(mut stream: TcpStream) {
     }
 
     let request = String::from_utf8_lossy(&buffer);
-    let (uri, method, authorization_header, body) = extract_request(&request);
+    let (uri, method, authorization_header, body, cookies) = extract_request(&request);
 
     // For communicating between threads
     let (sender, receiver) = mpsc::channel::<String>();
 
     let app_router: Router = Router::new(sender.clone());
     let response = app_router
-        .route(method.as_str(), uri.as_str(), authorization_header, body)
+        .route(
+            method.as_str(),
+            uri.as_str(),
+            authorization_header,
+            body,
+            cookies,
+        )
         .await;
 
     // Write the response to stream
