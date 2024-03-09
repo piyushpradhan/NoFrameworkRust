@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Claims {
     pub username: String,
     pub uid: i32,
-    exp: usize,
+    pub exp: usize,
 }
 
 impl Claims {

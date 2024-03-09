@@ -1,4 +1,14 @@
+use dotenv::dotenv;
+use jsonwebtoken::{decode, errors::Error, Algorithm, DecodingKey, TokenData, Validation};
+use std::env;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde_json::to_string;
+
+use crate::app::{
+    models::claims::Claims,
+    services::utils::{generate_token, verify_token},
+};
 
 fn http_status_text(status_code: u16) -> &'static str {
     match status_code {
@@ -32,11 +42,23 @@ pub fn not_found_response() -> String {
     )
 }
 
+pub fn unauthorized_response(message: &str) -> String {
+    let response = String::from(message);
+
+    format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
+        401,
+        http_status_text(404),
+        response.len(),
+        response
+    )
+}
+
 pub fn something_went_wrong(message: String) -> String {
     format!(
         "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
-        404,
-        http_status_text(404),
+        500,
+        http_status_text(500),
         message.len(),
         message
     )
@@ -133,4 +155,95 @@ pub fn extract_request(
     let cookies = extract_cookies(request);
 
     (uri, method, authorization_header, body, cookies)
+}
+
+pub fn should_require_token_verification(url: &str) -> bool {
+    let public_routes = vec!["/auth"];
+    !public_routes.iter().any(|route| url.starts_with(route))
+}
+
+pub fn is_token_expired(access_token: &str, cookies: Option<Vec<(&str, &str)>>) -> bool {
+    // Check if the token is not empty
+    if access_token.is_empty() {
+        return true;
+    }
+
+    let decoded_token = verify_token(&access_token, cookies);
+
+    // Get the current time as a Unix timestamp
+    let current_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as usize,
+        Err(_) => return true, // If the current time is before UNIX_EPOCH, return false
+    };
+
+    // Compare the current time with the expiration time
+    current_time > decoded_token.unwrap().claims.exp
+}
+
+pub fn extract_token_from_cookies(cookies: Option<Vec<(&str, &str)>>) -> Option<String> {
+    let token = cookies.and_then(|cookies| {
+        cookies
+            .iter()
+            .find(|(name, _)| *name == "token")
+            .map(|(_, value)| value.to_string())
+    });
+    token
+}
+
+pub fn access_token_from_refresh(refresh_token: &str) -> Option<String> {
+    let decoded = verify_refresh_token(&refresh_token);
+    match decoded {
+        Ok(refresh_data) => {
+            let claims = refresh_data.claims;
+            let access_token = generate_token(claims.uid, claims.username.as_str());
+            Some(access_token)
+        }
+        _ => None,
+    }
+}
+
+pub fn refresh_access_token(cookies: Option<Vec<(&str, &str)>>) -> Result<String, bool> {
+    let refresh_token = &cookies.as_ref().and_then(|cookies| {
+        cookies
+            .iter()
+            .find(|(name, _)| *name == "refresh")
+            .map(|(_, value)| value.to_string())
+    });
+
+    match refresh_token {
+        Some(token) => {
+            let is_expired = is_token_expired(&token, cookies.clone());
+            if is_expired {
+                return Err(false);
+            }
+
+            let access_token = access_token_from_refresh(&token);
+
+            match access_token {
+                Some(access_token) => return Ok(access_token),
+                _ => return Err(false),
+            }
+        }
+        None => return Err(false),
+    }
+}
+
+pub fn verify_refresh_token(token: &str) -> Result<TokenData<Claims>, Error> {
+    dotenv().ok();
+
+    let secret = match env::var("REFRESH_TOKEN_SECRET") {
+        Ok(refresh_secret) => refresh_secret,
+        _ => panic!("REFRESH_TOKEN_SECRET is not provided"),
+    };
+
+    let decoding_key = DecodingKey::from_secret(secret.as_ref());
+    let validation = Validation::new(Algorithm::HS256);
+
+    match decode::<Claims>(token, &decoding_key, &validation) {
+        Ok(token_data) => Ok(token_data),
+        Err(error) => {
+            println!("Failed to verify REFRESH TOKEN");
+            return Err(error);
+        }
+    }
 }

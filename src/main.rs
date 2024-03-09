@@ -2,7 +2,7 @@ use dotenv::dotenv;
 use http::connection;
 use http::thread_pool::ThreadPool;
 use std::env;
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::sync::Arc;
 
 mod app;
@@ -20,15 +20,15 @@ async fn main() {
     let listener = TcpListener::bind(address).unwrap();
 
     // Make pool a shared resource that is in sync across threads
-    // let pool = Arc::new(ThreadPool::new(4));
+    let pool = Arc::new(ThreadPool::new(4));
 
     for stream in listener.incoming() {
         let stream_value = stream.unwrap();
-        // let thread_pool = Arc::clone(&pool);
+        let thread_pool = Arc::clone(&pool);
 
         // Execute the connection handling task within the thread pool
-        // thread_pool.execute(async move {
-        connection::handle_connection(stream_value).await;
-        // });
+        thread_pool.execute(async move {
+            connection::handle_connection(stream_value).await;
+        });
     }
 }

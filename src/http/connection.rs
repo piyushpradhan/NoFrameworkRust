@@ -8,7 +8,10 @@ use std::{
 
 use crate::app::router::app::Router;
 
-use super::utils::extract_request;
+use super::utils::{
+    extract_request, extract_token_from_cookies, is_token_expired, refresh_access_token,
+    should_require_token_verification, unauthorized_response,
+};
 
 pub async fn handle_connection(mut stream: TcpStream) {
     dotenv().ok();
@@ -37,6 +40,43 @@ pub async fn handle_connection(mut stream: TcpStream) {
 
     let request = String::from_utf8_lossy(&buffer);
     let (uri, method, authorization_header, body, cookies) = extract_request(&request);
+
+    let mut request_cookies = cookies.clone();
+
+    // NOTE: Add the public routes in this function
+    let is_token_verification_required = should_require_token_verification(&uri);
+
+    // Verify access token before moving forward
+    if is_token_verification_required {
+        if let Some(access_token) = extract_token_from_cookies(cookies.clone()) {
+            if is_token_expired(&access_token, cookies.clone()) {
+                let access_token = refresh_access_token(cookies.clone());
+
+                match access_token {
+                    Ok(token) => {
+                        if let Some(modified_cookies) = request_cookies.as_mut() {
+                            for (key, value) in modified_cookies.iter_mut() {
+                                if *key == "token" {
+                                    *value = &token;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        let response = unauthorized_response("Could not verify access token");
+                        stream.write(response.as_bytes()).unwrap();
+                        stream.flush().unwrap();
+                        return;
+                    }
+                }
+            }
+        } else {
+            let response = unauthorized_response("Invalid token or token not present");
+            stream.write(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+            return;
+        }
+    }
 
     // For communicating between threads
     let (sender, receiver) = mpsc::channel::<String>();

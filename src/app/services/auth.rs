@@ -1,11 +1,14 @@
 use sqlx::{postgres::PgPool, Error, Row};
 extern crate bcrypt;
 
-use bcrypt::{hash, verify, BcryptError, DEFAULT_COST};
+use bcrypt::{hash, verify, DEFAULT_COST};
 
-use crate::app::models::{claims::Claims, user::User};
+use crate::{
+    app::models::{claims::Claims, user::User},
+    http::utils::extract_token_from_cookies,
+};
 
-use super::utils::{generate_token, verify_token};
+use super::utils::{generate_refresh_token, generate_token, store_refresh_token, verify_token};
 
 pub struct AuthService {
     pool: PgPool,
@@ -23,28 +26,17 @@ impl AuthService {
         cookies: Option<Vec<(&str, &str)>>,
     ) -> Result<User, Error> {
         // Extract the token from cookies
-        let token = cookies.and_then(|cookies| {
-            cookies
-                .iter()
-                .find(|(name, _)| *name == "token")
-                .map(|(_, value)| value.to_string())
-        });
+        let token = extract_token_from_cookies(cookies.clone());
 
         let decoded_token = match token {
-            Some(token) => {
-                println!("Extracted token: {}", token);
-                verify_token(&token)
-            }
+            Some(token) => verify_token(&token, cookies),
             None => return Err(Error::RowNotFound),
         };
 
         let claims: Claims = match decoded_token {
-            Ok(token_data) => {
-                println!("Token data: {:?}", token_data);
-                token_data.claims.into()
-            }
+            Ok(token_data) => token_data.claims.into(),
             Err(err) => {
-                print!("Something went wrong while getting token_data: {}", err);
+                println!("Something went wrong while getting token_data: {}", err);
                 return Err(Error::RowNotFound);
             }
         };
@@ -62,16 +54,19 @@ impl AuthService {
                 let id: i32 = result.try_get("id")?;
                 let username: String = result.try_get("username")?;
                 let hashed_password: String = result.try_get("password")?;
+                let refresh_token: String = result.try_get("refresh_token")?;
 
                 let is_password_correct = verify(password, &hashed_password);
 
                 match is_password_correct {
                     Ok(_) => {
-                        let custom_token = generate_token(id, username.as_str());
+                        let access_token = generate_token(id, username.as_str());
+
                         return Ok(User::new(
                             id,
                             username.to_string(),
-                            custom_token.to_string(),
+                            access_token.to_string(),
+                            refresh_token.to_string(),
                         ));
                     }
                     Err(_) => return Err(Error::RowNotFound),
@@ -96,8 +91,18 @@ impl AuthService {
         match result {
             Some(result) => {
                 let id: i32 = result.get("id");
-                let custom_token = generate_token(id, username);
-                return Ok(User::new(id, username.to_string(), custom_token));
+                let access_token = generate_token(id, username);
+                let refresh_token = generate_refresh_token(&username, id);
+
+                // Store the refresh token in database
+                store_refresh_token(&refresh_token, id, &self.pool).await;
+
+                return Ok(User::new(
+                    id,
+                    username.to_string(),
+                    access_token,
+                    refresh_token,
+                ));
             }
             None => {
                 return Err(Error::RowNotFound);

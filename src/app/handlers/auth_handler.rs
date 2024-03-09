@@ -57,6 +57,7 @@ pub async fn login(
             }
         }
         _ => {
+            println!("Failed to start auth service");
             return not_found_response();
         }
     };
