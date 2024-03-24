@@ -92,13 +92,13 @@ fn handle_expired_token(
             ) {
                 Ok(token_data) => Ok(token_data),
                 Err(error) => {
-                    println!("Invalid refresh token");
+                    eprintln!("Invalid refresh token");
                     return Err(error);
                 }
             }
         }
         _ => {
-            println!("Error while verifying token: {:?}", error);
+            eprintln!("Error while verifying token");
             return Err(error);
         }
     }

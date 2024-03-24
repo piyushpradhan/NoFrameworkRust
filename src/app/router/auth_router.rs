@@ -1,10 +1,7 @@
 use std::sync::mpsc;
 
 use crate::{
-    app::handlers::{
-        auth_handler::{login, register},
-        test_handler::test_api,
-    },
+    app::handlers::auth_handler::{login, register},
     http::utils::not_found_response,
 };
 

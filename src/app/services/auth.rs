@@ -10,6 +10,7 @@ use crate::{
 
 use super::utils::{generate_refresh_token, generate_token, store_refresh_token, verify_token};
 
+#[derive(Debug)]
 pub struct AuthService {
     pool: PgPool,
 }
@@ -25,26 +26,10 @@ impl AuthService {
         password: &str,
         cookies: Option<Vec<(&str, &str)>>,
     ) -> Result<User, Error> {
-        // Extract the token from cookies
-        let token = extract_token_from_cookies(cookies.clone());
-
-        let decoded_token = match token {
-            Some(token) => verify_token(&token, cookies),
-            None => return Err(Error::RowNotFound),
-        };
-
-        let claims: Claims = match decoded_token {
-            Ok(token_data) => token_data.claims.into(),
-            Err(err) => {
-                println!("Something went wrong while getting token_data: {}", err);
-                return Err(Error::RowNotFound);
-            }
-        };
-        let query = "SELECT * FROM users WHERE id = $1 AND username = $2";
+        let query = "SELECT * FROM users WHERE username = $1";
 
         // Check if a user with provided credentials exists
         let result = sqlx::query(query)
-            .bind(claims.uid)
             .bind(username)
             .fetch_optional(&self.pool)
             .await?;
@@ -73,7 +58,7 @@ impl AuthService {
                 }
             }
             None => {
-                println!("User not found");
+                eprintln!("User not found");
                 return Err(Error::RowNotFound);
             }
         }

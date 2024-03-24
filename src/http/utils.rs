@@ -13,6 +13,8 @@ use crate::app::{
 fn http_status_text(status_code: u16) -> &'static str {
     match status_code {
         200 => "OK",
+        401 => "Unauthorized",
+        403 => "Access Denied",
         500 => "Internal Server Error",
         _ => "Unknown status",
     }
@@ -22,9 +24,19 @@ pub fn generate_http_response<T: serde::Serialize>(status_code: u16, data: &T) -
     let response = to_string(data).unwrap();
 
     format!(
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost:8080\r\nAccess-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE\r\nAccess-Control-Allow-Credentials: true\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
         status_code,
         http_status_text(status_code),
+        response.len(),
+        response
+    )
+}
+
+pub fn generate_options_response() -> String {
+    let response = "";
+
+    format!(
+        "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: http://localhost:8080\r\nAccess-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE\r\nAccess-Control-Allow-Headers: content-type, Authorization, withCredentials, Cookie\r\nAccess-Control-Max-Age: 86400\r\nContent-Length: {}\r\n\r\n{}",
         response.len(),
         response
     )
@@ -34,7 +46,7 @@ pub fn not_found_response() -> String {
     let response = String::from("This route does not exist");
 
     format!(
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Credentials: true\r\nAccess-Control-Allow-Headers: *\r\n\r\n{}",
         404,
         http_status_text(404),
         response.len(),
@@ -94,7 +106,7 @@ fn extract_method(request: &str) -> String {
 
 fn extract_auth_header(request: &str) -> Option<&str> {
     for line in request.lines() {
-        if let Some(header_value) = line.strip_prefix("Authorization: ") {
+        if let Some(header_value) = line.strip_prefix("authorization: ") {
             return Some(header_value);
         }
     }
@@ -242,8 +254,20 @@ pub fn verify_refresh_token(token: &str) -> Result<TokenData<Claims>, Error> {
     match decode::<Claims>(token, &decoding_key, &validation) {
         Ok(token_data) => Ok(token_data),
         Err(error) => {
-            println!("Failed to verify REFRESH TOKEN");
             return Err(error);
         }
     }
+}
+
+pub fn extract_token_from_auth(auth_header: &str) -> Vec<(&str, &str)> {
+    let pairs: Vec<(&str, &str)> = auth_header
+        .trim_start_matches("Bearer ")
+        .split(';')
+        .map(|pair| {
+            let mut iter = pair.split('=');
+            (iter.next().unwrap(), iter.next().unwrap_or(""))
+        })
+        .collect();
+
+    return pairs;
 }

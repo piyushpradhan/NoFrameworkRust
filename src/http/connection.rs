@@ -9,9 +9,22 @@ use std::{
 use crate::app::router::app::Router;
 
 use super::utils::{
-    extract_request, extract_token_from_cookies, is_token_expired, refresh_access_token,
-    should_require_token_verification, unauthorized_response,
+    extract_request, extract_token_from_auth, extract_token_from_cookies, is_token_expired,
+    refresh_access_token, should_require_token_verification, unauthorized_response,
 };
+
+fn handle_options_request(stream: &mut TcpStream) {
+    let response = "HTTP/1.1 200 OK\r\n\
+    Access-Control-Allow-Origin: *\r\n\
+    Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS\r\n\
+    Access-Control-Allow-Headers: Content-Type, Authorization, Cookie\r\n\
+    Content-Length: 0\r\n\
+    \r\n";
+
+    if let Err(err) = stream.write_all(response.as_bytes()) {
+        eprintln!("Error writing OPTIONS response to stream: {:?}", err);
+    }
+}
 
 pub async fn handle_connection(mut stream: TcpStream) {
     dotenv().ok();
@@ -42,39 +55,50 @@ pub async fn handle_connection(mut stream: TcpStream) {
     let (uri, method, authorization_header, body, cookies) = extract_request(&request);
 
     let mut request_cookies = cookies.clone();
+    let session_token = cookies
+        .clone()
+        .unwrap_or_else(|| extract_token_from_auth(authorization_header.unwrap_or_else(|| "")));
 
     // NOTE: Add the public routes in this function
     let is_token_verification_required = should_require_token_verification(&uri);
 
+    if method == "OPTIONS" {
+        handle_options_request(&mut stream);
+        return;
+    }
+
     // Verify access token before moving forward
     if is_token_verification_required {
-        if let Some(access_token) = extract_token_from_cookies(cookies.clone()) {
-            if is_token_expired(&access_token, cookies.clone()) {
-                let access_token = refresh_access_token(cookies.clone());
+        match extract_token_from_cookies(Some(session_token.clone())) {
+            Some(access_token) => {
+                if is_token_expired(&access_token, Some(session_token.clone())) {
+                    let access_token = refresh_access_token(Some(session_token.clone()));
 
-                match access_token {
-                    Ok(token) => {
-                        if let Some(modified_cookies) = request_cookies.as_mut() {
-                            for (key, value) in modified_cookies.iter_mut() {
-                                if *key == "token" {
-                                    *value = &token;
+                    match access_token {
+                        Ok(token) => {
+                            if let Some(modified_cookies) = request_cookies.as_mut() {
+                                for (key, value) in modified_cookies.iter_mut() {
+                                    if *key == "token" {
+                                        *value = &token;
+                                    }
                                 }
                             }
                         }
-                    }
-                    _ => {
-                        let response = unauthorized_response("Could not verify access token");
-                        stream.write(response.as_bytes()).unwrap();
-                        stream.flush().unwrap();
-                        return;
+                        _ => {
+                            let response = unauthorized_response("Could not verify access token");
+                            stream.write(response.as_bytes()).unwrap();
+                            stream.flush().unwrap();
+                            return;
+                        }
                     }
                 }
             }
-        } else {
-            let response = unauthorized_response("Invalid token or token not present");
-            stream.write(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-            return;
+            None => {
+                let response = unauthorized_response("Could not extract access token");
+                stream.write(response.as_bytes()).unwrap();
+                stream.flush().unwrap();
+                return;
+            }
         }
     }
 
@@ -88,7 +112,7 @@ pub async fn handle_connection(mut stream: TcpStream) {
             uri.as_str(),
             authorization_header,
             body,
-            cookies,
+            Some(session_token),
         )
         .await;
 
@@ -100,18 +124,18 @@ pub async fn handle_connection(mut stream: TcpStream) {
         // Reading data that's being sent to the receiver
         for data in receiver {
             if let Err(err) = stream.write(data.as_bytes()) {
-                eprintln!("Error writing to stream: {}", err);
+                eprintln!("Error writing to stream: {:?}", err);
                 // Attempt to gracefully close the stream and break the loop
                 if let Err(close_err) = stream.shutdown(Shutdown::Both) {
-                    eprintln!("Error closing stream: {}", close_err);
+                    eprintln!("Error shutting down stream: {:?}", close_err);
                 }
                 break;
             }
             if let Err(err) = stream.flush() {
-                eprintln!("Error flushing stream: {}", err);
+                eprintln!("Error flushing stream: {:?}", err);
                 // Attempt to gracefully close the stream and break the loop
                 if let Err(close_err) = stream.shutdown(Shutdown::Both) {
-                    eprintln!("Error closing stream: {}", close_err);
+                    eprintln!("Error shutting down stream after flushing: {:?}", close_err);
                 }
                 break;
             }

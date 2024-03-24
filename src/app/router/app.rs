@@ -1,11 +1,8 @@
 use std::sync::mpsc;
 
-use crate::app::handlers::test_handler::test_api;
-use crate::http::utils::not_found_response;
+use crate::{app::handlers::test_handler::test_api, http::utils::not_found_response};
 
-use super::another_router::AnotherRouter;
-use super::auth_router::AuthRouter;
-use super::test_router::TestRouter;
+use super::{another_router::AnotherRouter, auth_router::AuthRouter, test_router::TestRouter};
 
 pub struct Router {
     sender: mpsc::Sender<String>,

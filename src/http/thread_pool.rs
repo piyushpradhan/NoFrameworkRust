@@ -19,7 +19,6 @@ struct Worker {
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
-        println!("Spawned a new thread: {}", id);
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
             match message {
@@ -66,7 +65,6 @@ impl ThreadPool {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        println!("Executing job");
         let job = Box::pin(f);
         self.sender.send(Message::NewJob(job)).unwrap();
     }
@@ -74,16 +72,12 @@ impl ThreadPool {
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        println!("Sending message to terminate all workers");
-
         // Send termination message to all workers
         for _ in &self.workers {
             self.sender.send(Message::Terminate).unwrap();
         }
 
         for worker in &mut self.workers {
-            println!("Shutting down worker: {}", worker.id);
-
             // Wait for the associated threads to finish
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();

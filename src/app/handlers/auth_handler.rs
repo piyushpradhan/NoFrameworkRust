@@ -11,6 +11,7 @@ use serde_json::{Error, Value};
 async fn setup() -> Result<AuthService, PgError> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL is not specified");
     let pool = sqlx::postgres::PgPool::connect(database_url.as_str()).await?;
+    let cloned_pool = pool.clone();
     let auth_service = AuthService::new(pool);
 
     Ok(auth_service)
@@ -36,7 +37,7 @@ pub async fn login(
                     username = data["username"].to_string();
                     password = data["password"].to_string();
                 }
-                Err(_) => {
+                Err(err) => {
                     username = String::new();
                     password = String::new();
                 }
@@ -57,7 +58,6 @@ pub async fn login(
             }
         }
         _ => {
-            println!("Failed to start auth service");
             return not_found_response();
         }
     };
@@ -88,7 +88,6 @@ pub async fn register(sender: &Sender<String>, body: String) -> String {
                 Ok(response) => {
                     let formatted_response = generate_http_response(200, &response);
 
-                    println!("{}", formatted_response);
                     let _ = sender.send(formatted_response.clone());
                     return formatted_response;
                 }
